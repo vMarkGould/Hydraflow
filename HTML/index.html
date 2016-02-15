@@ -1,0 +1,390 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>HydraFlow Monitor</title>
+    <script src="https://fb.me/react-0.14.2.min.js"></script>
+    <script src="https://fb.me/react-dom-0.14.2.min.js"></script>
+    <script src="https://fb.me/react-with-addons-0.14.2.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.23/browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.2/marked.min.js"></script>
+    <script src="https://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+    <link rel="stylesheet" type="text/css" href="hydraFlow.css">
+  </head>
+  <body>
+    <div id="content"></div>
+
+    <script type="text/babel">
+    
+
+var D3Legend = React.createClass({
+
+  propTypes: {
+    width: React.PropTypes.number,
+    height: React.PropTypes.number,
+    colors: React.PropTypes.array.isRequired,
+    data: React.PropTypes.array.isRequired,
+  },
+
+  render: function() {
+    var color = this.props.colors;
+    var data = this.props.data;
+    var elements = data.map(function(item, i){
+      return (
+        <LegendElement color={color} xpos="0" ypos={100+i*20} data={item.name} key={i} ikey={i}/>
+      )
+    })
+
+    return(
+        <svg className="legend" width={this.props.width} height={this.props.height}>{elements}</svg>
+    );
+  }
+});
+
+
+
+var LegendElement = React.createClass({
+  render: function() {
+    var position =  "translate(" + this.props.xpos + "," + this.props.ypos + ")";
+    return (
+      <g transform={position}>
+        <rect width="18" height="18" fill={this.props.color[this.props.ikey]}></rect>
+        <text x="24" y="9" dy=".35em">{this.props.data}</text>
+      </g>
+    );
+  }
+});
+
+var Sector = React.createClass({
+  getInitialState: function() {
+    return {text: '', opacity:'arc'};
+  },
+  render: function() {
+    var outerRadius = this.props.width/2.2;
+    var innerRadius = this.props.width/8;
+    var arc = d3.svg.arc()
+        .outerRadius(outerRadius)
+        .innerRadius(innerRadius);
+    var data = this.props.data;
+    var center = "translate(" + arc.centroid(data) + ")";
+    var percentCenter = "translate(0,3)";
+    var color = this.props.colors;
+    return (
+      <g onMouseOver={this.onMouseOver} onMouseOut={this.onMouseOut} onClick={this.onClick}>
+        <path className={this.state.opacity} fill={color[this.props.ikey]} d={arc(this.props.data)}></path>
+        <text fill="white" transform={center} textAnchor="middle" fontSize="15px">{data.value}</text>
+        <text fill={color[this.props.ikey]} stroke={color} fontSize="15px" transform={percentCenter} textAnchor="middle">{this.state.text}</text>
+      </g>
+    );
+  },
+
+  onMouseOver: function() {
+    this.setState({text: '', opacity:'arc-hover'});
+    var percent = (this.props.data.value/this.props.total)*100;
+    percent = percent.toFixed(1);
+    this.setState({text: percent + " %"});
+  },
+  onMouseOut: function() {
+    this.setState({text: '', opacity:'arc'});
+  },
+  onClick: function() {
+    alert("You clicked "+this.props.name);
+  }
+});
+
+var DataSeries = React.createClass({
+  propTypes: {
+    width: React.PropTypes.number.isRequired,
+    height: React.PropTypes.number.isRequired,
+    color: React.PropTypes.array,
+    data: React.PropTypes.array.isRequired,
+  },
+  render: function() {
+    var color = this.props.colors;
+    var data = this.props.data;
+    var width = this.props.width;
+    var height = this.props.height;
+    var pie = d3.layout.pie();
+    var result = data.map(function(item){
+      return item.count;
+    })
+    var names = data.map(function(item){
+      return item.name;
+    })
+    var sum = result.reduce(function(memo, num){ return memo + num; }, 0);
+    var position = "translate(" + (width)/2 + "," + (height)/2 + ")";
+    var bars = (pie(result)).map(function(point, i) {
+      return (
+        <Sector data={point} ikey={i} key={i} name={names[i]} colors={color} total=  
+        {sum} width={width} height={height}/>
+      )
+    });
+
+    return (
+        <g transform={position}>{bars}</g>
+    );
+  }
+});
+
+var D3Chart = React.createClass({
+  propTypes: {
+    width: React.PropTypes.number.isRequired,
+    height: React.PropTypes.number.isRequired,
+    children: React.PropTypes.node,
+  },
+  render: function() {
+    return (
+      <svg width={this.props.width} height={this.props.height}>        
+      {this.props.children}</svg>
+    );
+  }
+});
+
+var HydraFlow = React.createClass({
+  propTypes: {
+    width: React.PropTypes.number,
+    height: React.PropTypes.number,
+    title: React.PropTypes.string,
+    data: React.PropTypes.array.isRequired,
+  },
+
+
+    getInitialState: function() {
+    return {
+      width: 400,
+      height: 450,
+      title: '',
+      Legend: true,
+      varname: '',
+      lastCarried: '',
+      totalDrunk: '',
+      percentRemaining: '',
+      photon: '',
+      photonName: '',
+      online: '',
+      fullHistory: {},
+      data: [
+    {name: "Water Drunk", count: 10},
+    {name: "Water Remaining", count: 20} ] 
+    };
+  },
+  
+    getDefaultProps : function() {
+    return {
+      url : 'https://api.spark.io/v1/devices/',
+      photonID : 'photonID',
+      photonAccessToken : 'PhotonAccessToken',
+      pollInterval: '2000',
+      data: [
+      {name: "Water Drunk", count: 10},
+      {name: "Water Remaining", count: 20} ] 
+    };
+  },
+  
+    loadHistory: function() {
+     // var test = this.datajson;
+         $.get(this.props.url + this.props.photonID + "/History/?access_token=" + this.props.photonAccessToken, function(result) {
+      var payload = result;
+      var history = payload.result;
+      console.log(history);
+      var historyObj = JSON.parse(history);
+      console.log(historyObj)
+      if (this.isMounted()) {
+        this.setState({
+          
+        });
+      }
+    }.bind(this));
+     
+//      console.log(this.props.datajson);
+//      var history = JSON.parse(this.props.datajson);
+//      console.log(this.history);
+    },
+  
+    loadDeviceInformation: function() {
+    $.get(this.props.url + this.props.photonID + "/?access_token=" + this.props.photonAccessToken, function(result) {
+      var deviceInfo = result;
+      if (this.isMounted()) {
+        this.setState({
+          photonName: deviceInfo.name,
+          online: deviceInfo.connected
+        });
+      }
+    }.bind(this));
+  },
+  
+  loadCarriedFromPhoton: function() {
+    $.get(this.props.url + this.props.photonID + "/Carried/?access_token=" + this.props.photonAccessToken, function(result) {
+      var carried = result;
+      if (this.isMounted()) {
+        this.setState({
+          varname: carried.name,
+          lastCarried: carried.result,
+          photon: carried.coreInfo.deviceID
+        });
+      }
+    }.bind(this));
+  },
+  
+    loadDrunkFromPhoton: function() {
+    $.get(this.props.url + this.props.photonID + "/TotalDrunk/?access_token=" + this.props.photonAccessToken, function(result) {
+      var drunk = result;
+      if (this.isMounted()) {
+        this.setState({
+          totalDrunk: drunk.result });
+      }
+    }.bind(this));
+  },
+  
+   loadPercentFromPhoton: function() {
+    $.get(this.props.url + this.props.photonID + "/Percent/?access_token=" + this.props.photonAccessToken, function(result) {
+      var percent = result;
+      if (this.isMounted()) {
+        this.setState({
+          percentRemaining: percent.result });
+      }
+    }.bind(this));
+  },
+  
+  loadDeviceInformation: function() {
+    $.get(this.props.url + this.props.photonID + "/?access_token=" + this.props.photonAccessToken, function(result) {
+      var deviceInfo = result;
+      if (this.isMounted()) {
+        this.setState({
+          photonName: deviceInfo.name,
+          online: deviceInfo.connected
+        });
+      }
+    }.bind(this));
+  },
+  
+  resetDevice: function() {
+    var postAddr = this.props.url + this.props.photonID + "/resetMlDrunk/";
+    $.post(postAddr, {params: "reset", access_token: this.props.photonAccessToken }, function(result) {
+      this.loadDrunkFromPhoton();
+        }.bind(this));
+    },
+  
+    updateData: function() {
+        var changedData = React.addons.update(this.props.data, {
+            0: {
+                count: { $set: this.state.totalDrunk }
+            },
+            1: {
+                count: { $set: this.state.lastCarried - this.state.totalDrunk  }
+            }
+        });
+         this.setState({data: changedData});        
+    },
+    
+      componentDidMount: function() {
+        this.loadHistory();
+        this.loadCarriedFromPhoton();
+        setInterval(this.loadCarriedFromPhoton, this.props.pollInterval);
+        this.loadDrunkFromPhoton();
+        setInterval(this.loadDrunkFromPhoton, this.props.pollInterval);
+        this.loadPercentFromPhoton();
+        setInterval(this.loadPercentFromPhoton, this.props.pollInterval);
+        this.loadDeviceInformation();
+        setInterval(this.loadDeviceInformation, this.props.pollInterval);
+        this.updateData();
+        setInterval(this.updateData, this.props.pollInterval);
+        this.loadDeviceInformation();
+        setInterval(this.loadDeviceInformation, this.props.pollInterval);
+  },
+
+  render: function() {
+    var colors = ['#DB444C', '#5A92F2']; /*90C3D4 */
+    return (
+    <div>
+      <div id="main">
+      
+       <currentState>
+        <section id="current">
+         <section class="chart">
+          <D3Chart width={this.state.width} height={this.state.height}>
+              <DataSeries data={this.state.data} colors={colors} width=
+                {this.state.width} height={this.state.height}/>
+          </D3Chart>
+          <D3Legend data={this.state.data} colors={colors} width={this.state.width - 200} height={this.state.height} />
+          </section>
+          </section>
+        </currentState>
+        
+
+        <logo>
+          <img src="HydraFlowBlueVertSmall.png"></img>
+        </logo>
+        
+        <reset>
+            <HydraFlowCurrentState totalDrunk={this.state.totalDrunk} photonName={this.state.photonName} online={this.state.online} resetFnc={this.resetDevice} />
+        </reset>
+       </div>
+      <footer id="bottom">
+      <HydraFlowGraph />
+      </footer>
+   </div>
+    );
+  }
+});
+<!--frame for historical Librato Data Put your own Librato URL here -->
+      var HydraFlowGraph = React.createClass({
+        render: function() {
+            return (
+            <hydraFlowGraph>
+                <iframe src="https://metrics.librato.com/s/public/9wnb16fm7" width="99%" height="620px"></iframe>
+        </hydraFlowGraph>
+        );
+     }
+   });
+   
+   var HydraFlowCurrentState = React.createClass({
+    render: function() {
+      var showOnline = this.props.online ? 'Online' : 'Offline';
+      var showOnlineState = this.props.online ? 'OnlineState' : 'OfflineState';
+         return (
+        <div>
+        <section id={showOnlineState}>
+        <h3>{this.props.photonName} <br></br>
+        
+        <span id={showOnline}>{showOnline}</span></h3>
+        </section>
+        
+        <section id="reset">
+        <button id="resetButton" onClick={this.props.resetFnc}>Reset: Total Drunk {this.props.totalDrunk} ml</button>
+        </section>
+        <div id="enlarge">
+        <ul>
+        <li id="controler">
+                <img  src="hydraFlowcontrolsSmall.jpg"></img>
+    
+        <span id="bigImage">
+     
+                <img id="controler" src="HydraFlowCombined.jpg"></img>     
+        </span>
+        </li>
+
+        <li>
+                <img src="hydraflowlogoSmall.jpg"></img>
+
+        </li>
+        </ul>
+          </div>      
+
+        </div>
+
+
+        );
+     }
+ });
+ 
+ var jsonstring = "{drunk1: 400, time1: 4}";
+
+ReactDOM.render(<HydraFlow datajson={jsonstring} title="HydraFlow"/>, document.body);
+
+</script>
+</body>
+
+</html>
